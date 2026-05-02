@@ -10,6 +10,10 @@ RUN go mod download
 # Копируем остальной код
 COPY . .
 
+# Устанавливаем swag и генерируем Swagger-документацию
+RUN go install github.com/swaggo/swag/cmd/swag@latest && \
+    swag init -g cmd/app/main.go
+
 # Собираем бинарник
 RUN CGO_ENABLED=0 GOOS=linux go build -o /subscription_app ./cmd/app/main.go
 
