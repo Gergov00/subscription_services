@@ -25,6 +25,9 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, params dom
 		if err := validateMonthYear(*params.EndDate); err != nil {
 			return nil, errors.New("invalid end_date format, expected MM-YYYY")
 		}
+		if err := validateDateOrder(params.StartDate, *params.EndDate); err != nil {
+			return nil, err
+		}
 	}
 
 	sub := domain.NewSubscription()
@@ -67,6 +70,9 @@ func (s *subscriptionService) UpdateSubscription(ctx context.Context, id uuid.UU
 			if err := validateMonthYear(*params.EndDate); err != nil {
 				return nil, errors.New("invalid end_date format, expected MM-YYYY")
 			}
+			if err := validateDateOrder(sub.StartDate, *params.EndDate); err != nil {
+				return nil, err
+			}
 			sub.EndDate = params.EndDate
 		} else {
 			sub.EndDate = nil
@@ -96,6 +102,9 @@ func (s *subscriptionService) CalculateTotalCost(ctx context.Context, params dom
 	if err := validateMonthYear(params.EndPeriod); err != nil {
 		return 0, errors.New("invalid end_period format, expected MM-YYYY")
 	}
+	if err := validateDateOrder(params.StartPeriod, params.EndPeriod); err != nil {
+		return 0, err
+	}
 
 	subs, err := s.repo.GetSubscriptionsForCalculation(ctx, params.UserID, params.ServiceName, params.StartPeriod, params.EndPeriod)
 	if err != nil {
@@ -119,6 +128,22 @@ func (s *subscriptionService) CalculateTotalCost(ctx context.Context, params dom
 func validateMonthYear(my string) error {
 	_, err := time.Parse("01-2006", my)
 	return err
+}
+
+// validateDateOrder проверяет, что start не позже end.
+func validateDateOrder(startStr, endStr string) error {
+	start, err := parseMonthYear(startStr)
+	if err != nil {
+		return err
+	}
+	end, err := parseMonthYear(endStr)
+	if err != nil {
+		return err
+	}
+	if start > end {
+		return errors.New("start date must not be later than end date")
+	}
+	return nil
 }
 
 func parseMonthYear(my string) (int, error) {
