@@ -235,3 +235,32 @@ go run ./cmd/app/main.go
 ```
 
 > При локальном запуске убедись, что в `.env` указан `DB_PORT=5433` (если БД запущена через Docker с маппингом порта `5433:5432`).
+
+---
+
+## Тестирование
+
+В проекте реализовано два уровня тестирования: **Unit-тесты** (для сервиса и хендлеров) и **Интеграционные тесты** (для репозитория и БД).
+
+### 1. Запуск Unit-тестов
+Эти тесты не требуют запущенной базы данных:
+
+```bash
+go test ./internal/... -v
+```
+
+### 2. Запуск Интеграционных тестов
+Для этих тестов требуется работающая PostgreSQL. 
+
+1. Запустите базу данных через Docker:
+   ```bash
+   docker compose up db -d
+   ```
+2. Накатите миграции (если они еще не накатились):
+   ```bash
+   docker compose run --rm migrate -path=/migrations -database="postgres://${DB_USER:-user}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-subscriptions}?sslmode=disable" up
+   ```
+3. Запустите тесты, указав локальный порт БД (5433) и тег `integration`:
+   ```bash
+   go test -tags integration ./tests/integration/... -v
+   ```
