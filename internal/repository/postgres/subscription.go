@@ -113,10 +113,14 @@ func (s *SubscriptionStorage) GetByID(ctx context.Context, id uuid.UUID) (*domai
 func (s *SubscriptionStorage) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM subscriptions WHERE id = $1;`
 	start := time.Now()
-	_, err := s.pool.Exec(ctx, query, id)
+	tag, err := s.pool.Exec(ctx, query, id)
 	if err != nil {
 		s.log.Error("delete subscription failed", slog.String("id", id.String()), slog.Any("error", err))
 		return err
+	}
+	if tag.RowsAffected() == 0 {
+		s.log.Warn("subscription not found for delete", slog.String("id", id.String()))
+		return errors.New("subscription not found")
 	}
 	s.log.Info("delete subscription", slog.String("id", id.String()), slog.Duration("latency", time.Since(start)))
 	return nil
@@ -156,39 +160,40 @@ func (s *SubscriptionStorage) List(ctx context.Context, limit, offset int) ([]*d
 	return subs, nil
 }
 
-func (s *SubscriptionStorage) GetSubscriptionsForCalculation(ctx context.Context, userID uuid.UUID, serviceName *string, startPeriod string, endPeriod string) ([]*domain.Subscription, error) {
+// CalculateTotalCost вычисляет суммарную стоимость подписок за период целиком на стороне БД.
+// Использует функцию month_abs() для перевода 'MM-YYYY' в абсолютный номер месяца,
+// что делает запрос читаемым и позволяет PostgreSQL кэшировать вычисления (IMMUTABLE).
+func (s *SubscriptionStorage) CalculateTotalCost(ctx context.Context, params domain.CalculateCostParams) (int, error) {
 	query := `
-		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at 
-		FROM subscriptions 
+		SELECT COALESCE(SUM(
+			GREATEST(0,
+				LEAST(month_abs($3), COALESCE(month_abs(end_date), month_abs($3))) -
+				GREATEST(month_abs($2), month_abs(start_date)) + 1
+			) * price
+		), 0)
+		FROM subscriptions
 		WHERE user_id = $1
-		  AND TO_DATE(start_date, 'MM-YYYY') <= TO_DATE($2, 'MM-YYYY')
-		  AND (end_date IS NULL OR TO_DATE(end_date, 'MM-YYYY') >= TO_DATE($3, 'MM-YYYY'))`
+		  AND month_abs(start_date) <= month_abs($3)
+		  AND (end_date IS NULL OR month_abs(end_date) >= month_abs($2))`
 
-	var args []interface{}
-	args = append(args, userID, endPeriod, startPeriod)
+	args := []interface{}{params.UserID, params.StartPeriod, params.EndPeriod}
 
-	if serviceName != nil && *serviceName != "" {
-		args = append(args, *serviceName)
+	if params.ServiceName != nil && *params.ServiceName != "" {
+		args = append(args, *params.ServiceName)
 		query += fmt.Sprintf(` AND service_name = $%d`, len(args))
 	}
 
-	rows, err := s.pool.Query(ctx, query, args...)
+	start := time.Now()
+	var total int
+	err := s.pool.QueryRow(ctx, query, args...).Scan(&total)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subs []*domain.Subscription
-	for rows.Next() {
-		var model dbModel
-		if err := rows.Scan(
-			&model.ID, &model.ServiceName, &model.Price, &model.UserID,
-			&model.StartDate, &model.EndDate, &model.CreatedAt, &model.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		subs = append(subs, mapToDomain(&model))
+		s.log.Error("calculate total cost failed", slog.Any("error", err))
+		return 0, err
 	}
 
-	return subs, nil
+	s.log.Info("calculate total cost",
+		slog.String("user_id", params.UserID.String()),
+		slog.Int("total", total),
+		slog.Duration("latency", time.Since(start)))
+	return total, nil
 }
