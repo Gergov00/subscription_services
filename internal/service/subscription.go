@@ -106,85 +106,26 @@ func (s *subscriptionService) CalculateTotalCost(ctx context.Context, params dom
 		return 0, err
 	}
 
-	subs, err := s.repo.GetSubscriptionsForCalculation(ctx, params.UserID, params.ServiceName, params.StartPeriod, params.EndPeriod)
-	if err != nil {
-		return 0, err
-	}
-
-	totalCost := 0
-
-	for _, sub := range subs {
-		months, err := overlapMonths(params.StartPeriod, params.EndPeriod, sub.StartDate, sub.EndDate)
-		if err != nil {
-			return 0, err
-		}
-		totalCost += months * sub.Price
-	}
-
-	return totalCost, nil
+	return s.repo.CalculateTotalCost(ctx, params)
 }
-
 
 func validateMonthYear(my string) error {
 	_, err := time.Parse("01-2006", my)
 	return err
 }
 
-// validateDateOrder проверяет, что start не позже end.
 func validateDateOrder(startStr, endStr string) error {
-	start, err := parseMonthYear(startStr)
+	start, err := time.Parse("01-2006", startStr)
 	if err != nil {
 		return err
 	}
-	end, err := parseMonthYear(endStr)
+	end, err := time.Parse("01-2006", endStr)
 	if err != nil {
 		return err
 	}
-	if start > end {
+	if start.After(end) {
 		return errors.New("start date must not be later than end date")
 	}
 	return nil
 }
 
-func parseMonthYear(my string) (int, error) {
-	t, err := time.Parse("01-2006", my)
-	if err != nil {
-		return 0, err
-	}
-	return t.Year()*12 + int(t.Month()), nil
-}
-
-func overlapMonths(reqStartStr, reqEndStr, subStartStr string, subEndStr *string) (int, error) {
-	reqStart, err := parseMonthYear(reqStartStr)
-	if err != nil {
-		return 0, err
-	}
-	reqEnd, err := parseMonthYear(reqEndStr)
-	if err != nil {
-		return 0, err
-	}
-
-	subStart, err := parseMonthYear(subStartStr)
-	if err != nil {
-		return 0, err
-	}
-
-	subEnd := reqEnd 
-	if subEndStr != nil && *subEndStr != "" {
-		se, err := parseMonthYear(*subEndStr)
-		if err != nil {
-			return 0, err
-		}
-		subEnd = se
-	}
-
-	start := max(reqStart, subStart)
-	end := min(reqEnd, subEnd)
-
-	overlap := end - start + 1
-	if overlap <= 0 {
-		return 0, nil
-	}
-
-	return overlap, nil
-}
