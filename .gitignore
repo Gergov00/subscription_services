@@ -19,6 +19,4 @@ go.work
 
 # Environment variables file
 .env
-
-# Swagger generated docs
-docs/
+app
