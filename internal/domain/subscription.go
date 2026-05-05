@@ -62,5 +62,5 @@ type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Subscription, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, limit, offset int) ([]*Subscription, error)
-	GetSubscriptionsForCalculation(ctx context.Context, userID uuid.UUID, serviceName *string, startPeriod string, endPeriod string) ([]*Subscription, error)
+	CalculateTotalCost(ctx context.Context, params CalculateCostParams) (int, error)
 }
