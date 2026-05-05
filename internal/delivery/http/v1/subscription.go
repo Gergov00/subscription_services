@@ -206,7 +206,11 @@ func (h *SubscriptionHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteSubscription(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if err.Error() == "subscription not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
